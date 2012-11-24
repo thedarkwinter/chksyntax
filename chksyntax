@@ -1,0 +1,128 @@
+#!/bin/bash
+
+################# Script Information ###########
+# test_<script> = command an parameters of the test
+# hdrs_<script> = array of potential header strings in first line of file: eg: /bash would match #!/bin/bash
+# exts_<script> = array of possible externsions for the script files
+
+# define list of scripts
+scripts=( bash php perl python ruby )
+
+# bash
+test_bash='bash -n'
+exts_bash=( sh )
+hdrs_bash=( /sh /bash )
+
+# php
+test_php='php -l'
+exts_php=( php )
+hdrs_php=( /php )
+
+# perl
+test_perl='perl -c'
+exts_perl=( pm pl )
+hdrs_perl=( /perl )
+
+# python
+test_python='python -m my_compile'
+exts_python=( py )
+hdrs_python=( /python )
+
+# ruby
+test_ruby='ruby -c'
+exts_ruby=( rb )
+hdrs_ruby=( /ruby )
+
+
+################# Functions #############
+
+# usage
+usage() {
+    echo "Usage: chksyntax [arguments]"
+    echo "  -h this help"
+    echo "  -r recursive"
+    echo "  -v verbose, output even when passed"
+    echo "  -d dont ignore unknown files"
+    exit
+}
+
+# check file extenions
+file_ext() { 
+    test "${1##*.}" == "$2" && return 0; 
+}
+
+# check the first line of the file for matching strings
+grep_head() { 
+    test "${@: -1}" == "" && return 1;
+    echo $1 | grep "${@: -1}" > /dev/null 2>&1 && return 0; 
+}
+
+# script checkers, if the test fails the retest and output to screen
+test_script() {
+    $@ > /dev/null 2>&1 && {
+        test $v -eq 1 && echo -e "Passed [$1]\t: ${@: -1}"
+        return 0
+    }
+    total=`expr $total + 1`
+    echo -e "\nFailed [$1]\t: ${@: -1}"
+    $@
+    echo
+}
+
+
+############ Command line arguments #######
+m=1
+d=0
+v=0
+total=0
+for arg in "$@" ; do
+    test "$arg" == "-h" && usage
+    test "$arg" == "-r" && m=99
+    test "$arg" == "-d" && d=1
+    test "$arg" == "-v" && v=1
+done
+
+############ Main Program  ##########
+
+files=`find ./ -maxdepth $m -type f`
+for file in ${files} ; do 
+    test -s $file || continue;
+    h=`head $file -n1` # get header here rather than everytime
+    f=`echo $file | awk '{print tolower($0)}'` # lower case of filename for extenion checker
+
+    file_ext $file bash
+
+    tested=0
+    for s in ${scripts[@]} ; do
+        hdrs=hdrs_$s[@]
+        exts=exts_$s[@]
+        tst=test_$s
+        for t in ${!exts[0]} ; do
+            file_ext $f $t && { 
+                test_script ${!tst} $file
+                tested=1
+                break
+            }
+        done
+        test $tested -eq 1 && break;
+        for t in ${!hdrs[0]} ; do
+            grep_head $h $t && { 
+                test_script ${!tst} $file
+                tested=1
+                break
+            }
+        done
+        test $tested -eq 1 && break;
+    done
+    test $tested -eq 1 && continue;
+
+    test $d -eq 1 || continue;   
+    echo -e "Unknown script\t: $file"
+done
+
+test $total -eq 0 && { 
+    echo "Complete, no errors found";
+    exit 0;
+}
+echo "Complete, $total errors found";
+exit 1;
