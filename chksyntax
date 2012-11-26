@@ -53,7 +53,7 @@ done
 
 # usage
 usage() {
-    echo "Usage: chksyntax [arguments]"
+    echo "Usage: chksyntax [arguments] [files|paths]"
     echo "  -h this help"
     echo "  -r recursive"
     echo "  -v verbose, output even when passed"
@@ -62,14 +62,14 @@ usage() {
 }
 
 # check file extenions
-file_ext() { 
-    test "${1##*.}" == "$2" && return 0; 
+file_ext() {
+    test "${1##*.}" == "$2" && return 0;
 }
 
 # check the first line of the file for matching strings
-grep_head() { 
+grep_head() {
     test "${@: -1}" == "" && return 1;
-    echo $1 | grep "${@: -1}" > /dev/null 2>&1 && return 0; 
+    echo $1 | grep "${@: -1}" > /dev/null 2>&1 && return 0;
 }
 
 # script checkers, if the test fails the retest and output to screen
@@ -83,6 +83,7 @@ test_script() {
         return 0
     }
     total=`expr $total + 1`
+    errors=`expr $errors + 1`
     echo -e "\nFailed [$1]\t: ${@: -1}"
     $@
     echo
@@ -90,58 +91,65 @@ test_script() {
 
 
 ############ Command line arguments #######
+paths=()
 m=1
 d=0
 v=0
 total=0
+errors=0
 for arg in "$@" ; do
+    if [[ ! $arg =~ ^- ]] ; then paths+=($arg) ; fi
     test "$arg" == "-h" && usage
     test "$arg" == "-r" && m=99
     test "$arg" == "-d" && d=1
     test "$arg" == "-v" && v=1
 done
 
+if [[ ${#paths[@]} == 0 ]] ; then paths+='./' ; fi
+
 ############ Main Program  ##########
 
-files=`find ./ -maxdepth $m -type f`
-for file in ${files} ; do 
-    test -s $file || continue;
-    h=`head $file -n1` # get header here rather than everytime
-    f=`echo $file | awk '{print tolower($0)}'` # lower case of filename for extenion checker
+for path in ${paths[@]} ; do
+    files=`find $path -maxdepth $m -type f`
+    for file in ${files} ; do
+        test -s $file || continue;
+        h=`head -n1 $file` # get header here rather than everytime
+        f=`echo $file | awk '{print tolower($0)}'` # lower case of filename for extenion checker
 
-    file_ext $file bash
+        file_ext $file bash
 
-    tested=0
-    for s in ${scripts[@]} ; do
-        hdrs=hdrs_$s[@]
-        exts=exts_$s[@]
-        tst=test_$s
-        for t in ${!exts[0]} ; do
-            file_ext $f $t && { 
-                test_script ${!tst} $file
-                tested=1
-                break
-            }
+        tested=0
+        for s in ${scripts[@]} ; do
+            hdrs=hdrs_$s[@]
+            exts=exts_$s[@]
+            tst=test_$s
+            for t in ${!exts[0]} ; do
+                file_ext $f $t && {
+                    test_script ${!tst} $file
+                    tested=1
+                    break
+                }
+            done
+            test $tested -eq 1 && break;
+            for t in ${!hdrs[0]} ; do
+                grep_head $h $t && {
+                    test_script ${!tst} $file
+                    tested=1
+                    break
+                }
+            done
+            test $tested -eq 1 && break;
         done
-        test $tested -eq 1 && break;
-        for t in ${!hdrs[0]} ; do
-            grep_head $h $t && { 
-                test_script ${!tst} $file
-                tested=1
-                break
-            }
-        done
-        test $tested -eq 1 && break;
+        test $tested -eq 1 && continue;
+
+        test $d -eq 1 || continue;
+        echo -e "Unknown script\t: $file"
     done
-    test $tested -eq 1 && continue;
-
-    test $d -eq 1 || continue;   
-    echo -e "Unknown script\t: $file"
 done
 
-test $total -eq 0 && { 
-    echo "Complete, no errors found";
+test $errors -eq 0 && {
+    echo "Complete, $total files checked, no errors found";
     exit 0;
 }
-echo "Complete, $total errors found";
+echo "Complete, $total files checked, $errors errors found";
 exit 1;
