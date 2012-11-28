@@ -33,22 +33,6 @@ test_ruby='ruby -c'
 exts_ruby=( rb )
 hdrs_ruby=( /ruby )
 
-# check binaries are avialable
-for s in ${scripts[@]} ; do
-    tst=test_$s
-    cmd=${!tst}
-    bin=${cmd% *}
-    arg=${cmd#*$bin} 
-    fp=`whereis -b "$bin" | cut -f 2 -d ' '`
-    test -x $fp && {
-        eval test_$s="\$fp\$arg"
-        continue;
-    }
-    
-    eval test_$s="na"
-done
-
-
 ################# Functions #############
 
 # usage
@@ -77,6 +61,7 @@ test_script() {
     total=`expr $total + 1`
     test $1 == "na" && {
         echo -e "Skipped [$1]\t: ${@: -1} : binary not available to test"
+        skipped=`expr $skipped + 1`
         return 0
     }
     $@ > /dev/null 2>&1 && {
@@ -97,15 +82,25 @@ d=0
 v=0
 total=0
 errors=0
+skipped=0
 for arg in "$@" ; do
     if [[ ! $arg =~ ^- ]] ; then paths+=($arg) ; fi
     test "$arg" == "-h" && usage
     test "$arg" == "-r" && m=99
     test "$arg" == "-d" && d=1
-    test "$arg" == "-v" && v=1
+    test "$arg" == "-v" && v=1 && d=1
 done
 
 if [[ ${#paths[@]} == 0 ]] ; then paths+='./' ; fi
+
+############ Check for available binaries #######
+for s in ${scripts[@]} ; do
+    tst=test_$s[@]
+    fp=`which ${!tst}`
+    test -x "$fp" && continue;
+    eval test_$s="na";
+    echo "$s not available"
+done
 
 ############ Main Program  ##########
 
@@ -147,9 +142,11 @@ for path in ${paths[@]} ; do
     done
 done
 
-test $errors -eq 0 && {
-    echo "Complete, $total files checked, no errors found";
-    exit 0;
+test $skipped -eq 0 || echo "Skipped $skipped";
+test $errors -eq 0 || { 
+    echo "Total $total";
+    echo "Errors: $errors";
+    exit 1;
 }
-echo "Complete, $total files checked, $errors errors found";
-exit 1;
+echo "All $total files passed syntax checks";
+exit 0;
