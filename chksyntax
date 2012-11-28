@@ -82,6 +82,10 @@ maxdepth=1
 ignore=0
 verbose=0
 
+# load user defs and folders defs files
+test -e ~/.chksyntax && source ~/.chksyntax
+test -e .chksyntax && source .chksyntax
+
 for arg in "$@" ; do
     if [[ ! $arg =~ ^- ]] ; then paths+=($arg) ; fi
     test "$arg" == "-h" && usage
